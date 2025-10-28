@@ -1,0 +1,5 @@
+{
+  "name": "PHP of School Result System",
+  "description": "A web application to manage and display student academic results. Users can input student marks for various subjects, and the system calculates and displays the total marks, percentage, and grade in a clear, organized table.",
+  "requestFramePermissions": []
+}
