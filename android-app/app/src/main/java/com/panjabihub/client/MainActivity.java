@@ -13,11 +13,13 @@ import android.webkit.*;
 import android.widget.*;
 import org.json.JSONObject;
 import java.io.*;
-import java.net.HttpURLConnection;\nimport java.net.URL;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MainActivity extends Activity {
     public static final String PREFS="panjabi_app";
-    public static final String CHANNEL="orders";\n    private static final int CURRENT_VERSION_CODE=1;
+    public static final String CHANNEL="orders";
+    private static final int CURRENT_VERSION_CODE=1;
     private WebView web;
     private Handler handler=new Handler(Looper.getMainLooper());
     private Runnable poller;
