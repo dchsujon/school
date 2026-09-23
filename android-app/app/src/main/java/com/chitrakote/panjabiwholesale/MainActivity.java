@@ -8,8 +8,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
@@ -22,6 +20,11 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+import com.google.firebase.messaging.FirebaseMessaging;
+
 public class MainActivity extends Activity {
     private static final String BASE_URL = "https://chitrakote.com/shop";
     private static final String APP_URL = BASE_URL + "/portal/app.php";
@@ -29,21 +32,13 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private ProgressBar progress;
-    private FrameLayout root;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    private final Runnable foregroundPoll = new Runnable() {
-        @Override public void run() {
-            try { NotificationSync.poll(MainActivity.this, false); } catch (Throwable ignored) {}
-            handler.postDelayed(this, 60_000L);
-        }
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
-            NotificationSync.ensureChannel(this);
+            initFirebase();
+            PushNotifications.ensureChannel(this);
             buildUi();
             openFromIntentOrHome(getIntent());
         } catch (Throwable e) {
@@ -51,16 +46,36 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void initFirebase() {
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseOptions options = new FirebaseOptions.Builder()
+                    .setApplicationId("1:575784874081:android:e55e9bfc5e546a9888fa20")
+                    .setApiKey("AIzaSyD2K8DzzhEuvrJM0f5cTgoc8eD_ciT_tNY")
+                    .setProjectId("shop-6404e")
+                    .setGcmSenderId("575784874081")
+                    .setStorageBucket("shop-6404e.firebasestorage.app")
+                    .build();
+            FirebaseApp.initializeApp(this, options);
+        }
+
+        FirebaseMessaging.getInstance().setAutoInitEnabled(true);
+        FirebaseMessaging.getInstance().getToken().addOnCompleteListener((OnCompleteListener<String>) task -> {
+            if (task.isSuccessful() && task.getResult() != null) {
+                PushTokenRegistrar.saveToken(this, task.getResult());
+                PushTokenRegistrar.tryRegister(this);
+            }
+        });
+    }
+
     private void buildUi() {
-        root = new FrameLayout(this);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.WHITE);
 
         webView = new WebView(getApplicationContext());
-        FrameLayout.LayoutParams webLp = new FrameLayout.LayoutParams(
+        root.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-        );
-        root.addView(webView, webLp);
+        ));
 
         progress = new ProgressBar(this);
         FrameLayout.LayoutParams progressLp = new FrameLayout.LayoutParams(
@@ -69,7 +84,6 @@ public class MainActivity extends Activity {
         );
         progressLp.gravity = Gravity.CENTER;
         root.addView(progress, progressLp);
-
         setContentView(root);
 
         WebSettings s = webView.getSettings();
@@ -109,14 +123,11 @@ public class MainActivity extends Activity {
                 progress.setVisibility(ProgressBar.GONE);
                 try {
                     android.webkit.CookieManager.getInstance().flush();
-                    if (url != null && url.startsWith(BASE_URL + "/portal/") && !url.contains("/login.php")) {
-                        String cookie = android.webkit.CookieManager.getInstance().getCookie(BASE_URL);
-                        if (cookie != null && cookie.contains("PHPSESSID")) {
-                            NotificationSync.saveSessionCookie(MainActivity.this, cookie);
-                            NotificationSync.syncSession(MainActivity.this);
-                            NotificationSync.scheduleBackground(MainActivity.this);
-                            requestNotificationPermissionIfNeeded();
-                        }
+                    String cookie = android.webkit.CookieManager.getInstance().getCookie(BASE_URL);
+                    if (cookie != null && cookie.contains("PHPSESSID")) {
+                        PushTokenRegistrar.saveCookie(MainActivity.this, cookie);
+                        PushTokenRegistrar.tryRegister(MainActivity.this);
+                        requestNotificationPermissionIfNeeded();
                     }
                 } catch (Throwable ignored) {}
             }
@@ -136,10 +147,14 @@ public class MainActivity extends Activity {
     }
 
     private void openFromIntentOrHome(Intent intent) {
-        String url = intent == null ? null : intent.getStringExtra("open_url");
-        if (url == null || !url.startsWith(BASE_URL + "/")) url = APP_URL;
+        String url = null;
+        if (intent != null) {
+            url = intent.getStringExtra("open_url");
+            if (url == null) url = intent.getStringExtra("link_url");
+        }
+        url = PushNotifications.safeUrl(url);
         progress.setVisibility(ProgressBar.VISIBLE);
-        webView.loadUrl(url);
+        webView.loadUrl(url == null ? APP_URL : url);
     }
 
     @Override
@@ -156,19 +171,6 @@ public class MainActivity extends Activity {
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
             }
         } catch (Throwable ignored) {}
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        handler.removeCallbacks(foregroundPoll);
-        handler.postDelayed(foregroundPoll, 10_000L);
-    }
-
-    @Override
-    protected void onPause() {
-        handler.removeCallbacks(foregroundPoll);
-        super.onPause();
     }
 
     private void showFatalMessage(String message) {
@@ -189,7 +191,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        handler.removeCallbacks(foregroundPoll);
         try {
             if (webView != null) {
                 webView.stopLoading();
