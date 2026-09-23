@@ -1,10 +1,15 @@
 package com.chitrakote.panjabiwholesale;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
@@ -18,17 +23,29 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final String APP_URL = "https://chitrakote.com/shop/portal/app.php";
+    private static final String BASE_URL = "https://chitrakote.com/shop";
+    private static final String APP_URL = BASE_URL + "/portal/app.php";
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 31;
+
     private WebView webView;
     private ProgressBar progress;
     private FrameLayout root;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private final Runnable foregroundPoll = new Runnable() {
+        @Override public void run() {
+            try { NotificationSync.poll(MainActivity.this, false); } catch (Throwable ignored) {}
+            handler.postDelayed(this, 60_000L);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
+            NotificationSync.ensureChannel(this);
             buildUi();
-            openApp();
+            openFromIntentOrHome(getIntent());
         } catch (Throwable e) {
             showFatalMessage("Unable to start app. Please check Android System WebView and internet connection.");
         }
@@ -81,9 +98,7 @@ public class MainActivity extends Activity {
                     "mailto".equalsIgnoreCase(scheme) ||
                     "sms".equalsIgnoreCase(scheme) ||
                     "intent".equalsIgnoreCase(scheme)) {
-                    try {
-                        startActivity(new Intent(Intent.ACTION_VIEW, u));
-                    } catch (Throwable ignored) {}
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Throwable ignored) {}
                     return true;
                 }
                 return false;
@@ -92,7 +107,18 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 progress.setVisibility(ProgressBar.GONE);
-                android.webkit.CookieManager.getInstance().flush();
+                try {
+                    android.webkit.CookieManager.getInstance().flush();
+                    if (url != null && url.startsWith(BASE_URL + "/portal/") && !url.contains("/login.php")) {
+                        String cookie = android.webkit.CookieManager.getInstance().getCookie(BASE_URL);
+                        if (cookie != null && cookie.contains("PHPSESSID")) {
+                            NotificationSync.saveSessionCookie(MainActivity.this, cookie);
+                            NotificationSync.syncSession(MainActivity.this);
+                            NotificationSync.scheduleBackground(MainActivity.this);
+                            requestNotificationPermissionIfNeeded();
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
 
             @Override
@@ -109,9 +135,40 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void openApp() {
+    private void openFromIntentOrHome(Intent intent) {
+        String url = intent == null ? null : intent.getStringExtra("open_url");
+        if (url == null || !url.startsWith(BASE_URL + "/")) url = APP_URL;
         progress.setVisibility(ProgressBar.VISIBLE);
-        webView.loadUrl(APP_URL);
+        webView.loadUrl(url);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        try { openFromIntentOrHome(intent); } catch (Throwable ignored) {}
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        handler.removeCallbacks(foregroundPoll);
+        handler.postDelayed(foregroundPoll, 10_000L);
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(foregroundPoll);
+        super.onPause();
     }
 
     private void showFatalMessage(String message) {
@@ -126,15 +183,13 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        if (webView != null && webView.canGoBack()) webView.goBack();
+        else super.onBackPressed();
     }
 
     @Override
     protected void onDestroy() {
+        handler.removeCallbacks(foregroundPoll);
         try {
             if (webView != null) {
                 webView.stopLoading();
