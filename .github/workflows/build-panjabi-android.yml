@@ -31,16 +31,16 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build stable APK
+      - name: Build Android notification APK
         run: gradle assembleDebug
 
       - name: Prepare APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/panjabi-wholesale-v1.0.2-stable.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/panjabi-wholesale-v1.0.3-notifications.apk
           cp app/build/outputs/apk/debug/app-debug.apk dist/app-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: panjabi-wholesale-android-v1.0.2-stable
+          name: panjabi-wholesale-android-v1.0.3-notifications
           path: android-app/dist/*.apk
