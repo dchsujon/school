@@ -13,11 +13,11 @@ import android.webkit.*;
 import android.widget.*;
 import org.json.JSONObject;
 import java.io.*;
-import java.net.*;
+import java.net.HttpURLConnection;\nimport java.net.URL;
 
 public class MainActivity extends Activity {
     public static final String PREFS="panjabi_app";
-    public static final String CHANNEL="orders";
+    public static final String CHANNEL="orders";\n    private static final int CURRENT_VERSION_CODE=1;
     private WebView web;
     private Handler handler=new Handler(Looper.getMainLooper());
     private Runnable poller;
@@ -42,8 +42,8 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setAllowFileAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true);
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web,true);
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){
                 Uri u=r.getUrl();
@@ -55,8 +55,8 @@ public class MainActivity extends Activity {
                 return false;
             }
             @Override public void onPageFinished(WebView v,String url){
-                CookieManager.getInstance().flush();
-                String cookie=CookieManager.getInstance().getCookie(getPreferencesBase());
+                android.webkit.CookieManager.getInstance().flush();
+                String cookie=android.webkit.CookieManager.getInstance().getCookie(getPreferencesBase());
                 if(cookie!=null)getSharedPreferences(PREFS,MODE_PRIVATE).edit().putString("session_cookie",cookie).apply();
             }
         });
@@ -121,11 +121,11 @@ public class MainActivity extends Activity {
                 JSONObject j=new JSONObject(readAll(c.getInputStream()));
                 int latest=j.optInt("version_code",1);
                 int min=j.optInt("minimum_supported_code",1);
-                boolean force=j.optBoolean("force_update",false)||BuildConfig.VERSION_CODE<min;
+                boolean force=j.optBoolean("force_update",false)||CURRENT_VERSION_CODE<min;
                 String url=j.optString("apk_url","");
                 String ver=j.optString("version_name","");
                 String notes=j.optString("release_notes","");
-                if(j.optBoolean("apk_ready",false)&&latest>BuildConfig.VERSION_CODE&&!url.isEmpty())
+                if(j.optBoolean("apk_ready",false)&&latest>CURRENT_VERSION_CODE&&!url.isEmpty())
                     runOnUiThread(()->showUpdateDialog(ver,notes,url,force));
             }catch(Exception ignored){}
         }).start();
