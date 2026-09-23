@@ -1,7 +1,7 @@
 package com.chitrakote.panjabiwholesale;
 
-import android.app.JobInfo;
-import android.app.JobScheduler;
+import android.app.job.JobInfo;
+import android.app.job.JobScheduler;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
